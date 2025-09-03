@@ -8,13 +8,12 @@
 #include <poll.h> // For poll()
 #include <fcntl.h> // For fcntl()
 #include <chrono> // For C++11's <chrono> library
+#include <random>
 
 #include "tcp_connector.hpp"
 #include "db_connector.hpp"
 
-const char * create = "CREATE TABLE IF NOT EXISTS transactions (" "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                 "amount REAL, resp TEXT, "
-                 "ts DATETIME DEFAULT CURRENT_TIMESTAMP);";
+const char * DB = "../posgw.db";
 struct Args {
     std::string cmd;
     double      amount = 0.0;
@@ -82,12 +81,21 @@ int main(int argc, char* argv[]) {
         case Cmd::Sale:
             try {
               TCPConnector conn(args.host, args.port);
-              conn.send(std::to_string(args.amount) + "\n");
+
+                      long ts = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+
+              // simple random nonce
+              std::mt19937_64 rng(std::random_device{}());
+              uint64_t nonce = rng();
+
+              std::string msg = "AUTH|" + std::to_string(args.amount) +
+                          "|" + std::to_string(ts) +
+                          "|" + std::to_string(nonce) + "\n";
+              conn.send(msg + "\n");
               std::string resp = conn.read(5000);
               std::cout << "Response: " << resp << "\n";
 
-              DBConnector db("../posgw.db");
-              db.write(create);
+              DBConnector db(DB);
 
               db.write("INSERT INTO transactions (amount, resp) VALUES (" +
                  std::to_string(args.amount) + ", '" + resp + "');");
@@ -100,8 +108,7 @@ int main(int argc, char* argv[]) {
 
         case Cmd::Last:
           try {
-               DBConnector db("../posgw.db");
-               db.write(create);
+               DBConnector db(DB);
 
                std::string sql = "SELECT amount, resp FROM transactions "
                                  "ORDER BY id DESC LIMIT " + std::to_string(args.n) + ";";
@@ -120,8 +127,7 @@ int main(int argc, char* argv[]) {
            return 0;
         case Cmd::Recon:
             try {
-                DBConnector db("../posgw.db");
-                db.write(create);
+                DBConnector db(DB);
 
                 std::string sql =
                     "SELECT date(ts), "
@@ -154,72 +160,5 @@ int main(int argc, char* argv[]) {
             return 2;
     }
 
-  // Create a socket (IPv4, TCP)
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd == -1) {
-    std::cout << "Failed to create socket. errno: " << errno << std::endl;
-    exit(EXIT_FAILURE);
-  }
-
-  // Connect to the server at 127.0.0.1:9999
-  sockaddr_in sockaddr;
-  sockaddr.sin_family = AF_INET;
-  sockaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  sockaddr.sin_port = htons(9999);
-  if (connect(sockfd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) < 0) {
-    std::cout << "Failed to connect to server. errno: " << errno << std::endl;
-    exit(EXIT_FAILURE);
-  }
-
-  // Set the socket to non-blocking mode
-  int flags = fcntl(sockfd, F_GETFL, 0);
-  fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
-
-  // Send a message to the server
-  std::string message = "Hello, server!\n";
-  if (write(sockfd, message.c_str(), message.size()) < 0) {
-    std::cout << "Failed to send message to server. errno: " << errno << std::endl;
-    exit(EXIT_FAILURE);
-  }
-
-  // Set up poll structure
-  pollfd fds;
-  fds.fd = sockfd;
-  fds.events = POLLIN;
-
-  // Specify a timeout of 5000 milliseconds using <chrono>
-  auto timeout = std::chrono::milliseconds(5000);
-
-  while (true) {
-    // Poll for a response from the server with the specified timeout
-    int poll_count = poll(&fds, 1, timeout.count());
-    if (poll_count < 0) {
-      std::cout << "Failed to poll. errno: " << errno << std::endl;
-      exit(EXIT_FAILURE);
-    }
-
-    // Check if there's data to read
-    if (fds.revents & POLLIN) {
-      char buffer[100];
-      auto bytesRead = read(sockfd, buffer, 100);
-      if (bytesRead <= 0) {
-        // If read() fails with EWOULDBLOCK, it means that there is no data to
-        // read and we can continue.
-        if (errno != EWOULDBLOCK && bytesRead < 0) {
-          std::cout << "Failed to read from server. errno: " << errno << std::endl;
-          exit(EXIT_FAILURE);
-        }
-        if (bytesRead == 0) {
-          // The server has closed the connection
-          std::cout << "The server has closed the connection" << std::endl;
-          break;
-        }
-      } else {
-        std::cout << "The server said: " << buffer;
-      }
-    }
-  }
-
-  // Close the connection
-  close(sockfd);
+  return 0;
 }

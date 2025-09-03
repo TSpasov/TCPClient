@@ -2,10 +2,22 @@
 #include <stdexcept>
 #include <sqlite3.h>
 
+namespace {
+    // ---- Schema & SQL constants ----
+    const char* CREATE_TABLE_SQL =
+        "CREATE TABLE IF NOT EXISTS transactions ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "amount REAL, "
+        "resp TEXT, "
+        "ts DATETIME DEFAULT CURRENT_TIMESTAMP);";
+}
+
 DBConnector::DBConnector(const std::string& path) {
     if (sqlite3_open(path.c_str(), reinterpret_cast<sqlite3**>(&db)) != SQLITE_OK) {
         throw std::runtime_error("failed to open DB: " + path);
     }
+    // ensure schema exists
+    write(CREATE_TABLE_SQL);
 }
 
 DBConnector::~DBConnector() {
@@ -40,4 +52,3 @@ std::vector<std::vector<std::string>> DBConnector::read(const std::string& sql) 
     }
     return rows;
 }
-
