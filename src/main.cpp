@@ -13,7 +13,8 @@
 #include "tcp_connector.hpp"
 #include "db_connector.hpp"
 
-const char * DB = "../posgw.db";
+const char * DB = "posgw.db";
+
 struct Args {
     std::string cmd;
     double      amount = 0.0;
