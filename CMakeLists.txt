@@ -9,8 +9,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 find_package(SQLite3 REQUIRED)
 
+file(GLOB SOURCES "src/*.cpp" "src/*.hpp")
 # Add the executable
-add_executable(posgw src/main.cpp)
+add_executable(posgw ${SOURCES})
 
 target_link_libraries(posgw PRIVATE ${SQLite3_LIBRARIES})
 
